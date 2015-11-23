@@ -1,0 +1,276 @@
+#!/usr/bin/env python
+#
+# checkScript
+#
+# Utility to validate ARCHER job submission scripts.
+#
+# Currently only works for parallel jobs.
+#
+# Copyright 2011-2013 EPCC, The University of Edinburgh
+#
+import os
+import sys
+import re
+import subprocess
+import getopt
+
+def printHelp():
+	print "\nUsage: checkScript [-h -q --quiet --help] <submission script>\n"
+ 	print "  Validate ARCHER job submission script and optionally print"
+	print "  potentially useful debugging information. Currently only works"
+	print "  for parallel jobs.\n"
+ 	print "  Options:\n"
+	print "      -q,--quiet      Do not output validation information. Just"
+	print "                      return 0 for valid script or 1 for erroneous"
+	print "                      script. May be useful for automation."
+	print "      -h,--help       Print this help and exit.\n"
+
+# Function to convert times to seconds
+def timeToSeconds(time):
+        tokens = time.strip().split(":")
+        h = int(tokens[0])
+        m = int(tokens[1])
+        s = int(tokens[2])
+        return h*3600 + m*60 + s
+
+###################################################
+# Start of main script
+###################################################
+# System parameters: ARCHER phase 1
+MAX_CORES_PER_NODE=24                  # Cores per node
+MAX_NODES = 4920                       # Maximum number of nodes for standard queues
+DEFAULT_WALLTIME="0:5:0"               # Default walltime, if none specified
+MIN_WALLTIME="0:1:0"                   # Minimum walltime
+MAX_WALLTIME="1-128:48,129-:24"        # Maximum walltime
+AU_RATE = 0.015*MAX_CORES_PER_NODE     # Current AU rate
+
+BUDGETS = "/usr/local/packages/cse/budgets/budgets"
+
+# Are we writing details
+verbose = True
+
+# Get the command line options
+opts, args = getopt.getopt(sys.argv[1:], "qh",["quiet","help"])
+for opt, arg in opts:
+	if opt in ("-q", "--quiet"):
+		verbose = False
+	elif opt in ("-h", "--help"):
+		printHelp()
+        	sys.exit()
+
+if (len(args) < 1):
+	printHelp()
+	sys.exit()
+
+# Welcome message
+if (verbose):
+        sys.stdout.write("\n===========================================================================\n")
+        sys.stdout.write("checkScript\n")
+        sys.stdout.write("---------------------------------------------------------------------------\n")
+        sys.stdout.write("Copyright 2011-2013  EPCC, The University of Edinburgh\n")
+        sys.stdout.write("This program comes with ABSOLUTELY NO WARRANTY.\n")
+        sys.stdout.write("This is free software, and you are welcome to redistribute it\n")
+        sys.stdout.write("under certain conditions.\n")
+        sys.stdout.write("===========================================================================\n")
+
+# Get current working directory
+if re.search("/",args[0]):
+	cwd = args[0]
+else:
+	cwd = os.getcwd()
+
+sfile = open(args[0], 'r')
+
+# Script settings
+select = 0
+bigmem = False
+num_threads = 0
+swalltime = 0
+walltime = ""
+budget = ""
+jobname = ""
+queue = ""
+foundAprun = False
+
+# Warning messages
+mppwidthErr = "(ok)"
+mppnppnErr = "(ok)"
+walltimeErr = "(ok)"
+budgetErr = "(ok)"
+nodeErr = "(ok)"
+cwdErr = "(ok)"
+queueErr = "(ok)"
+nameErr = "(ok)"
+
+# Zero counters
+nWarn = 0
+nError = 0
+
+# Need to check for old mppwidth syntax
+
+# Loop over lines in the file
+for line in sfile:
+	# Look for PBS directives
+	if re.search("#PBS", line):
+		if re.search("-l\s+select=", line):
+			tokens = line.split("=")
+                        # Cope with large memory nodes
+                        if re.search(":", tokens[1]):
+                           tokens = tokens[1].split(":")
+                           bigmem = True
+                           select = int(tokens[0].strip())
+                        else:
+                           bigmem = False
+			   select = int(tokens[1].strip())
+		elif re.search("-l\s+walltime=", line):
+			tokens = line.split("=")
+                        walltime = tokens[1].strip()
+		elif re.search("-A", line):
+			tokens = line.split()
+                        budget = tokens[2].strip()
+		elif re.search("-N", line):
+			tokens = line.split()
+                        jobname = tokens[2].strip()
+		elif re.search("-q", line):
+			tokens = line.split()
+                        queue = tokens[2].strip()
+	elif re.search("aprun", line):
+		# Found aprun command
+		foundAprun = True
+
+# Close the script file
+sfile.close()
+
+# These variables hold the error and warning messages
+warnMessage = ""
+errorMessage = ""
+
+
+if (cmp(walltime,"") == 0):
+        if (verbose): warnMessage +=  "++ Warning: walltime not specified ++\n     Default walltime ({0}) will be used.\n".format(DEFAULT_WALLTIME)
+	walltime = DEFAULT_WALLTIME
+	walltimeErr = "(set to default)"
+        nWarn += 1
+
+# Compute number of nodes
+nnodes = select
+
+# Check the length of the job name
+if (len(jobname) > 15):
+	if (verbose): errorMessage +=  "** ERROR: Job name must be 15 characters or less **\n     You have specified: {0} ({1} characters)\n".format(jobname, len(jobname))
+        nameErr = "(error)"
+        nError += 1
+
+# Check we are on the work filesystem
+if not ((cmp(cwd[0:3], "/fs") == 0) or (cmp(cwd[0:5], "/work") == 0)):
+        if (verbose): errorMessage +=  "** ERROR: Jobs must be submitted from the /work filesystem **\n     You are using: {0}\n".format(cwd)
+        cwdErr = "(error)"
+        nError += 1
+
+# Check the resource requests are consistent
+# Nodes
+if (nnodes > MAX_NODES):
+        if (verbose): errorMessage +=  "** ERROR: Too many nodes requested ({0}); maximum is {1} **\n".format(nnodes, MAX_NODES)
+        nodeErr = "(error)"
+        nError += 1
+
+# walltime
+# Split up the walltime descriptor (if we need to)
+maxtime = ""
+if re.search(",", MAX_WALLTIME):
+	timebynodes = MAX_WALLTIME.split(",")	
+	# Loop over specifications
+	for specify in timebynodes:
+		items = specify.split(":")
+		r = items[0]
+		mt = items[1]
+		range = r.split("-")
+		# If the upper range is empty use max cores
+		if range[1] == "": range[1] = str(MAX_NODES)
+		# Set the max walltime string if we are in the range
+		if (nnodes >= int(range[0])) and (nnodes <= int(range[1])):
+			maxtime = mt + ":0:0"
+else:
+	# Just use the max walltime as an integer hour
+	maxtime = MAX_WALLTIME + ":0:0"
+
+
+if (timeToSeconds(walltime) > timeToSeconds(maxtime)):
+        if (verbose): errorMessage +=  "** ERROR: requested walltime ({0}) is larger than maximum ({1}) **\n".format(walltime, maxtime)
+        walltimeErr = "(error)"
+        nError += 1
+if (timeToSeconds(walltime) < timeToSeconds(MIN_WALLTIME)):
+        if (verbose): errorMessage +=  "** ERROR: requested walltime ({0}) is smaller than minimum ({1}) **\n".format(walltime, MIN_WALLTIME)
+        walltimeErr = "(error)"
+        nError += 1
+
+# aprun check
+if (not foundAprun):
+        if (verbose): warnMessage += "++ Warning: aprun command not found in script file ++\n     Please check you are calling your parallel job correctly.\n"
+        nWarn += 1
+
+# Budget check
+budgetList = subprocess.Popen(BUDGETS, stdout=subprocess.PIPE).communicate()[0]
+budgets = budgetList.split("\n")
+budgetFound = False
+for line in budgets:
+	if re.search(budget+" ", line):
+		budgetFound = True
+		tokens = line.split()
+		if (cmp(tokens[1], "No") == 0):
+			if (verbose): errorMessage +=  "** ERROR: no AUs left in {0} budget **\n     Your valid budgets are:\n{1}".format(budget, budgetList)
+                        budgetErr = "(error)"
+			nError += 1
+		elif (tokens[1] < 10.0):
+			if (verbose): warnMessage += "++ Warning: {0} budget does not have many kAUs left. Remaining AUs = {1} ++\n".format(budget, tokens[1])
+                        budgetErr = "(warning)"
+			nWarn += 1
+		else:
+			if (verbose): print "\nUsing {0} budget. Remaining kAUs = {1}".format(budget, tokens[1])
+
+if (not budgetFound):
+	if (verbose): errorMessage +=  "** ERROR: you do not have access to budget {0} **\n     Your valid budgets are:\n{1}".format(budget, budgetList)
+        budgetErr = "(error)"
+	nError += 1
+
+# Queue check
+if (queue not in ("","long","short","low") ):
+	if (verbose): errorMessage +=  "** ERROR: invalid queue name '{0}' **\n     For standard parallel jobs please do not specify a queue name\n".format(queue)
+        queueErr = "(error)"
+	nError += 1
+
+
+# Basic details
+if (verbose):
+	print "\nScript details"
+	print "---------------"
+	print "       User: " + os.environ['USER']
+	print "Script file: " + args[0]
+	print "  Directory: {0} {1}".format(cwd, cwdErr)
+	print "   Job name: {0} {1}".format(jobname, nameErr)
+	print "      Queue: {0} {1}".format(queue, queueErr)
+
+	# Print summary of requested resources
+	print "\nRequested resources"
+	print "-------------------"
+	print "      nodes = {0:>14} {1:>24}".format(nnodes, nodeErr)
+	print "   walltime = {0:>14} {1:>24}".format(walltime, walltimeErr)
+	print "     budget = {0:>14} {1:>24}\n".format(budget, budgetErr)
+
+	# Estimate AU usage (if no errors)
+	if (nError == 0):
+		aus = nnodes * AU_RATE * (timeToSeconds(walltime)/3600.0)
+		print "\nkAU Usage Estimate (if full job time used)"
+		print "------------------------------------------"
+		print "                       kAUs = {0:>14.3f}".format(aus)
+        
+	# Print check summary
+        print warnMessage
+	print errorMessage
+	print "\ncheckScript finished: {0} warning(s) and {1} error(s).\n".format(nWarn, nError)
+
+# Exit with the correct code
+exit = 0
+if (nError > 0): exit = 1
+sys.exit(exit)
+
