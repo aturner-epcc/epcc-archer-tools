@@ -1,4 +1,11 @@
 #!/bin/bash
+#
+# Short script to show estimated backfill space for
+# PBS pro on ARCHER.
+#
+# A. R. Turner, EPCC 2015
+#
+
 function get_node_list {
          local nodes=$1
          nodes=${nodes//(archer_/:}
