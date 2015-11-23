@@ -1,0 +1,70 @@
+#!/bin/bash
+#
+# Short script to recover directory with truncated 
+# files
+#
+
+# Set maximum number of simultaneous copies
+cmax=30
+
+if [ $# -ne 1 ]
+then
+    echo "
+Usage:
+    recdir <source directory>
+
+Non-recursive recover directory that may or may not contain truncated files. Directory with 
+truncated files cannot be deleted but will be renamed with the name:
+
+   <source directory>-lost
+"
+    exit 1
+fi
+
+# Remove trailing slash if needed
+dirname=${1/%\//}
+
+origdir=$dirname
+lostdir="${dirname}-lost"
+
+if [ ! -d  $origdir ]
+then
+   echo "Error: $origdir is not a directory"
+   exit 1
+fi
+if [ -e $lostdir ]
+then
+   echo "Error: Directory $lostdir already exists. Please remove or rename before
+                attempting to recover."
+   exit 1
+fi
+
+# Get list of files in source
+filelist=`find $origdir -maxdepth 1 -type f`
+
+if [ -z "$filelist" ]
+then
+  echo "No files to convert"
+fi
+
+# Move original to lost
+mv $origdir $lostdir
+mkdir $origdir
+
+n=0
+for file in $filelist
+do
+   filename=${file//$origdir\//}
+   recmv $lostdir/$filename $origdir/$filename &
+   n=$(( n + 1 ))
+   if [[ $n -eq $cmax ]]
+   then
+      wait
+      n=0
+   fi
+done
+
+# Final wait to catch any hanging processes
+wait
+
+exit 0

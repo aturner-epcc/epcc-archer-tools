@@ -1,0 +1,45 @@
+#!/bin/bash
+#
+# Utility to return simple report on disk usage on /work
+#
+# v1.0 2014-09-19 Andy Turner (EPCC)
+#
+
+grouplist=`groups`
+
+printf "Disk usage/quota information on /work:\n"
+printf "\n%s\n" "=============================================================="
+printf "%15s %12s %12s %20s\n" "Group" "Usage (GB)" "Quota (GB)" "Notes"
+printf "%s\n" "--------------------------------------------------------------"
+
+
+for group in $grouplist
+do
+   if [[ $group =~ [a-z]+[0-9][0-9] ]]
+   then
+      # We need just the top level group to extract quotas
+      tokens=(${group//-/ })
+      lfsout=`lfs quota -qg $group /work/${tokens[0]} 2> /dev/null`
+      tokens=(${lfsout//\w+/ })
+      # Make sure we have valid data
+      if [[ ${tokens[0]} =~ "^\/" ]]
+      then
+         usage=$(( ${tokens[1]} / ( 1024 * 1024 ) ))
+         quota=$(( ${tokens[3]} / ( 1024 * 1024 ) ))
+         files=${tokens[5]}
+         warning=""
+         if [[ $usage -ge $quota ]]
+         then
+            warning="(over quota)"
+         fi
+      else
+         usage=0
+         quota=0
+         files=0
+         warning="No quota data"
+      fi 
+      printf "%15s %12d %12d %20s\n" $group $usage $quota "$warning"
+   fi
+done
+
+printf "%s\n\n" "=============================================================="

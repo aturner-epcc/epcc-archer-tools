@@ -1,0 +1,37 @@
+#!/bin/bash
+#
+# Short script to copy files. Checks if they are truncated:
+# if so, uses dd (v. slow) otherwise uses standard cp.
+#
+if [ $# -ne 2 ]
+then
+    echo "
+Usage:
+    recmv <source file> <destination file>
+
+Move/rename source file to destination file. Checks if file is truncated
+due to OST issue. If so uses 'dd' to copy block by block, otherwise
+use standard 'mv'.
+"
+    exit 1
+fi
+infile=$1
+outfile=$2
+
+if [ -d  $infile ]
+then
+   echo "Error: $infile is a directory"
+   exit 2
+fi
+
+ls -l $infile > /dev/null 2> /dev/null
+test=$?
+if [[ $test -eq 0 ]]
+then
+   mv $infile $outfile
+   echo "Moved $infile to $outfile using mv"
+else 
+   dd if=$infile bs=1 of=$outfile status=noxfer 2> /dev/null
+   echo "Copied $infile to $outfile using dd"
+fi
+

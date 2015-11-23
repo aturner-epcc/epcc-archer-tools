@@ -1,0 +1,50 @@
+#!/usr/bin/env python
+import sys
+import os
+import datetime
+
+STATUS_FILE = "/etc/raidcheck_status"
+
+try:
+  statusfile = open(STATUS_FILE, "r")
+except:
+  print "Error - cannot read status file: {0}".format(STATUS_FILE)
+  sys.exit(1)
+
+
+# Get the file modification time
+modtime = datetime.datetime.fromtimestamp(os.path.getmtime(STATUS_FILE))
+
+# Get the status of individual filesystems
+fsDict = {}
+for line in statusfile:
+   line = line.rstrip()
+   tokens = line.split()
+   fsName = tokens[0].rstrip(":")
+   if tokens[4] == "Running":
+      fsDict[fsName] = True
+   else:
+      fsDict[fsName] = False
+
+statusfile.close()
+
+if len(sys.argv) > 1:
+   arg = sys.argv[1]
+   if arg in fsDict:
+      print int(fsDict[arg])
+   elif arg == "log":
+      for key in fsDict:
+         print int(fsDict[key]),
+   else:
+      print "Error - unknown file system: {0}".format(arg)
+      sys.exit(1)
+else:
+   print "Status last updated at: {0}".format(modtime)
+   for key in fsDict:
+      if fsDict[key]:
+         print "{0}: RAID check is running".format(key)
+      else:
+         print "{0}: RAID check is NOT running".format(key)
+
+sys.exit(0)
+
