@@ -1,0 +1,114 @@
+#!/usr/bin/env python
+#
+#===============================================================
+# serialjobs - Script to identify and report back on jobs 
+# running on the serial nodes on ARCHER
+#
+# It runs through the full output of the qstat command on ARCHER
+# identifies those jobs that are using serial resources (or at 
+# least have been submitted with serial=true in the -l select 
+# part of PBS) and then re-runs qstat using the id's of the jobs
+# it has identified.  If users want more details on particular
+# jobs they can then manually run qstat with the id of the job 
+# they are interested in.
+#
+#===============================================================
+#
+#===============================================================
+# v0.1 - Initial version, Adrian Jackson
+#===============================================================
+#
+#----------------------------------------------------------------------
+# Copyright 2014 EPCC, The University of Edinburgh
+#
+# serialjobs is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# serialjobs is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with serialjobs.  If not, see <http://www.gnu.org/licenses/>.
+#----------------------------------------------------------------------
+#
+import sys
+
+# Check whether the version of python being used is the correct version
+# or later.  The default system version is not good enough, the python 
+# module is required.
+if not sys.version_info[:2] >= (2, 7):
+    print "This program needs python 2.7 or higher"
+    print "Please load the python module to enable this to work"
+    print "You can load the python module like this:"
+    print "module load python"
+    exit(0)
+
+from subprocess import call,check_output
+from re import match,search
+import array
+
+
+
+idarray = array.array('i')
+
+try:
+# Get the fill qstat output
+    qstat_output = check_output("qstat" + " -f", shell=True)
+# Split the returned output into a list of individual lines
+    split_qstat_output = qstat_output.split("\n")
+# Work out how many lines we have so we can iterate through them
+    maxsize = len(split_qstat_output)
+# Go through all the output from qstata
+    for i in range(0,maxsize):
+# Select the current line
+       tempstring = split_qstat_output[i]
+# Find out if this is the start of a new job in the qstat output
+# Jobs are delimited by a line like this: Job Id: 110060.sdb 
+       tempmatch = match(r"Job Id:\s*\d+\.sdb",tempstring)
+# If we have matched a new job in the qstat output then 
+# we want to capture the job id
+       if tempmatch:
+# Select the job number from the line text
+          tempmatch2 = search(r"\d+",tempmatch.group(0))
+          if tempmatch2:
+# Store the job id into a variable (currentid) so that 
+# we know the job number in case this is a serial job
+             currentid = tempmatch2.group(0)
+# If the line we are processing is not a job id line then 
+# search the text to see if it contains the phrase "serial=true"
+# This is what we are using to see if it is a serial job.
+       else:
+          tempmatch = match(r".*serial=true.*",tempstring)
+# If we have matched that phrase (and therefore this job is a serial
+# job) then record the id of the job we are inspecting in the list 
+# of jobs we have identified as serial jobs.  We are storing it in 
+# integer format.
+	  if tempmatch:
+             idarray.append(int(currentid))
+# The way qstat and PBS produce output it is possible to have multiple 
+# lines with serial=true in the qstat output of a single job so remove 
+# duplicate entries in the list of jobs that we have identified as serial
+    sortedidarray = sorted(set(idarray))
+# No re-convert the integer array to a string
+# This is done by concatenating each array entry onto the end of a single 
+# string.
+# TODO: It maybe doesn't make sense to convert the string to integer for 
+# the storing in an array above and then convert back to string here.  There 
+# may be a more efficient way of just keeping it all as strings. 
+    idstring = ' '
+    for i in range(0,len(sortedidarray)):
+       idstring += str(sortedidarray[i]) + ' '
+
+# Finally we call qstat with the list of job id's we've identified as serial 
+# jobs.  This will output standard qstat information on each of these jobs.
+    call("qstat " + idstring, shell=True)
+
+except OSError as e:
+    print >>sys.stderr, "Execution failed:", e
+
+exit(0)
+
