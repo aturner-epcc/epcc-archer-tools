@@ -1,0 +1,150 @@
+#!/bin/bash
+function get_node_list {
+         local nodes=$1
+         nodes=${nodes//(archer_/:}
+         nodes=${nodes//_0:ncpus=12+archer_/:}
+         nodes=${nodes//_1:ncpus=12)+/:}
+         nodes=${nodes//_1:ncpus=12)/:}
+         echo $nodes
+}
+
+QSTAT_BF_COMMAND="/opt/pbs/12.2.401.141761/bin/qstat -T"
+QSTAT_F_COMMAND="/opt/pbs/12.2.401.141761/bin/qstat -f"
+NODESTAT_COMMAND="apstat -n"
+
+echo
+echo "==============================================="
+echo " Current PBS backfill status"
+echo "-----------------------------------------------"
+echo " Note: the information on backfill provides "
+echo " an estimate of the number of nodes free until "
+echo " jobs who have estimated start times set.   "
+echo " As PBS Pro does not store state, these       "
+echo " are NOT GUARANTEED but should be viewed as   "
+echo " a rough guide only.                          "
+echo "==============================================="
+echo
+
+# Get list of free nodes
+cmdout=$($NODESTAT_COMMAND)
+ORIGIFS=$IFS
+IFS=$'\n' nodearr=($cmdout)
+IFS=$ORIGIFS
+freenodes=()
+nfreenodes=0
+for ((i=0; i<${#nodearr[@]}; i++)); do
+   read -ra tokens <<< "${nodearr[$i]}"
+   if [[ ${tokens[5]} == *"-"* ]]; then
+          freenodes[$nfreenodes]=${tokens[0]}
+          nfreenodes=$(( nfreenodes + 1 ))
+   fi
+done
+
+echo
+echo "  Number of available nodes: $nfreenodes"
+echo
+
+
+# Get ;ist of jobs that are being backfilled against
+cmdout=$($QSTAT_BF_COMMAND)
+ORIGIFS=$IFS
+IFS=$'\n' qstatarr=($cmdout)
+IFS=$ORIGIFS
+
+backfill=false
+bfjobs=()
+runjobs=()
+nbfjobs=0
+nrunjobs=0
+for ((i=0; i<${#qstatarr[@]}; i++)); do
+   read -ra tokens <<< "${qstatarr[$i]}"
+   if [[ ${tokens[0]} == *"sdb" ]]; then
+      # Capture backfill job IDs
+      if [ ${tokens[10]} != "--" ]; then
+          bfjobs[$nbfjobs]=${tokens[0]}
+          nbfjobs=$(( nbfjobs + 1 ))
+          backfill=true
+      fi
+      # Capture running job IDs
+      if [ ${tokens[9]} == "R" ]; then
+          runjobs[$nrunjobs]=${tokens[0]}
+          nrunjobs=$(( nrunjobs + 1 ))
+      fi
+   fi
+done
+
+
+
+if [ $backfill = "false" ]; then
+   echo
+   echo "  PBS is not currently backfilling"
+   echo
+   exit 0
+fi
+
+# Print the table heading
+printf "  %5s %s\n" "Nodes" "Hrs Available"
+printf "  %5s %s\n" "=====" "============="
+
+# Get estimated placement nodes for backfilling jobs
+bfstart=()
+bfnodes=()
+for ((i=0; i<${#bfjobs[@]}; i++)); do
+   infocommand="$QSTAT_F_COMMAND ${bfjobs[$i]}"
+   cmdout=$($infocommand)
+   ORIGIFS=$IFS
+   IFS=$'\n' joblines=($cmdout)
+   IFS=$ORIGIFS
+   for ((j=0; j<${#joblines[@]}; j++)); do
+      line=${joblines[$j]}
+      # Section with list of exec nodes
+      if [[ $line == *"estimated.exec"* ]]; then
+         nodelist=${line/estimated.exec_vnode = /}
+         for ((k=j+1; k<${#joblines[@]}; k++)); do
+            line=${joblines[$k]}
+            if [[ $line == *" = "* ]]; then
+               i=$(( k - 1 ))
+               break
+            fi
+            nodelist="${nodelist}${line}"
+         done
+         # nodelist=${nodelist//[$'\t\r\n ']}
+         # nodelist=${nodelist//(archer_/:}
+         # nodelist=${nodelist//_0:ncpus=12+archer_/:}
+         # nodelist=${nodes//_1:ncpus=12)+/:}
+         # nodelist=${nodelist//_1:ncpus=12)/:}
+         bfnodes[$i]=${nodelist//[$'\t\r\n ']}
+      elif [[ $line == *"estimated.start"* ]]; then
+         ORIGIFS=$IFS
+         IFS='=' tokens=($line)
+         IFS=$ORIGIFS
+         bfstart[$i]=${tokens[1]}
+      fi
+   done
+
+   # How many of the free nodes are slated for this job
+   nfree=0
+   for ((j=0; j<${#freenodes[@]}; j++)); do
+      if [[ ${bfnodes[$i]} == *"_${freenodes[$j]}_"* ]]; then
+         nfree=$(( nfree + 1 ))
+      fi
+   done
+   # Compute time to estimated start time in hh:mm:ss
+   if [ $nfree -gt 0 ]; then
+      esttime=$(date --date="${bfstart[$i]}" +%s)
+      nowsec=$(date +%s)
+      secdiff=$((esttime - nowsec))
+      hrs=$((secdiff / 3600))
+      secdiff=$(( secdiff - 3600*hrs ))
+      mins=$((secdiff / 60))
+      secdiff=$(( secdiff - 60*mins ))
+      hms=$(printf "%d:%02d:%02d" $hrs $mins $secdiff)
+      printf "  %5d %13s\n" $nfree $hms
+   else
+      echo "  No free nodes in backfill list"
+   fi
+   
+done
+printf "  %5s %s\n" "=====" "============="
+echo
+
