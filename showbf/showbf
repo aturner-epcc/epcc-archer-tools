@@ -52,7 +52,7 @@ echo "  Number of available nodes: $nfreenodes"
 echo
 
 
-# Get ;ist of jobs that are being backfilled against
+# Get list of jobs that are being backfilled against
 cmdout=$($QSTAT_BF_COMMAND)
 ORIGIFS=$IFS
 IFS=$'\n' qstatarr=($cmdout)
@@ -80,8 +80,6 @@ for ((i=0; i<${#qstatarr[@]}; i++)); do
    fi
 done
 
-
-
 if [ $backfill = "false" ]; then
    echo
    echo "  PBS is not currently backfilling"
@@ -97,31 +95,32 @@ printf "  %5s %s\n" "=====" "============="
 bfstart=()
 bfnodes=()
 for ((i=0; i<${#bfjobs[@]}; i++)); do
+   # Get the job details for this job
    infocommand="$QSTAT_F_COMMAND ${bfjobs[$i]}"
    cmdout=$($infocommand)
    ORIGIFS=$IFS
    IFS=$'\n' joblines=($cmdout)
    IFS=$ORIGIFS
+   # Loop over all lines in the job details
    for ((j=0; j<${#joblines[@]}; j++)); do
       line=${joblines[$j]}
       # Section with list of exec nodes
       if [[ $line == *"estimated.exec"* ]]; then
          nodelist=${line/estimated.exec_vnode = /}
+         # Need to loop over lines accumulating estimated nodes
          for ((k=j+1; k<${#joblines[@]}; k++)); do
             line=${joblines[$k]}
             if [[ $line == *" = "* ]]; then
+               # At the end of the section, fix the index and break
                i=$(( k - 1 ))
                break
             fi
             nodelist="${nodelist}${line}"
          done
-         # nodelist=${nodelist//[$'\t\r\n ']}
-         # nodelist=${nodelist//(archer_/:}
-         # nodelist=${nodelist//_0:ncpus=12+archer_/:}
-         # nodelist=${nodes//_1:ncpus=12)+/:}
-         # nodelist=${nodelist//_1:ncpus=12)/:}
+         # Remove tabs, newlines and spaces from the nodelist
          bfnodes[$i]=${nodelist//[$'\t\r\n ']}
       elif [[ $line == *"estimated.start"* ]]; then
+         # Save the estimated start time
          ORIGIFS=$IFS
          IFS='=' tokens=($line)
          IFS=$ORIGIFS
@@ -129,15 +128,15 @@ for ((i=0; i<${#bfjobs[@]}; i++)); do
       fi
    done
 
-   # How many of the free nodes are slated for this job
+   # How many of the free nodes are slated for this job?
    nfree=0
    for ((j=0; j<${#freenodes[@]}; j++)); do
       if [[ ${bfnodes[$i]} == *"_${freenodes[$j]}_"* ]]; then
          nfree=$(( nfree + 1 ))
       fi
    done
-   # Compute time to estimated start time in hh:mm:ss
    if [ $nfree -gt 0 ]; then
+      # Compute time to estimated start time in hh:mm:ss
       esttime=$(date --date="${bfstart[$i]}" +%s)
       nowsec=$(date +%s)
       secdiff=$((esttime - nowsec))
@@ -146,6 +145,8 @@ for ((i=0; i<${#bfjobs[@]}; i++)); do
       mins=$((secdiff / 60))
       secdiff=$(( secdiff - 60*mins ))
       hms=$(printf "%d:%02d:%02d" $hrs $mins $secdiff)
+
+      # Print the backfill availability around this job
       printf "  %5d %13s\n" $nfree $hms
    else
       echo "  No free nodes in backfill list"
