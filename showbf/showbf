@@ -117,8 +117,8 @@ for ((i=0; i<${#bfjobs[@]}; i++)); do
             fi
             nodelist="${nodelist}${line}"
          done
-         # Remove tabs, newlines and spaces from the nodelist
-         bfnodes[$i]=${nodelist//[$'\t\r\n ']}
+         # Remove newlines and spaces from the nodelist
+         bfnodes[$i]=${nodelist//[$'\r\n ']}
       elif [[ $line == *"estimated.start"* ]]; then
          # Save the estimated start time
          ORIGIFS=$IFS
