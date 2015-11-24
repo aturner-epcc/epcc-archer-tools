@@ -87,9 +87,12 @@ if [ $backfill = "false" ]; then
    exit 0
 fi
 
+echo "Potential backfill nodes:"
+echo
+
 # Print the table heading
-printf "  %5s %s\n" "Nodes" "Hrs Available"
-printf "  %5s %s\n" "=====" "============="
+printf "  %5s %s\n" "Nodes" "hh:mm:ss Available"
+printf "  %5s %s\n" "=====" "=================="
 
 # Get estimated placement nodes for backfilling jobs
 bfstart=()
@@ -147,12 +150,12 @@ for ((i=0; i<${#bfjobs[@]}; i++)); do
       hms=$(printf "%d:%02d:%02d" $hrs $mins $secdiff)
 
       # Print the backfill availability around this job
-      printf "  %5d %13s\n" $nfree $hms
+      printf "  %5d %18s\n" $nfree $hms
    else
       echo "  No free nodes in backfill list"
    fi
    
 done
-printf "  %5s %s\n" "=====" "============="
+printf "  %5s %s\n" "=====" "=================="
 echo
 
