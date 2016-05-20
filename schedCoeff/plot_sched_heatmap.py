@@ -114,7 +114,7 @@ for i in range(len(jobtime)):
    for j in range(len(size)):
       ax1.text(j, i, str(jobs[i][j]), horizontalalignment='center', verticalalignment='center', fontsize=7)
 
-fig.savefig("sched_coeff_heatmap_jobs.png")
+fig.savefig("sched_coeff_heatmap_jobs.png", bbox_inches='tight')
 
 # fig = plt.figure()
 fig.clf()
@@ -137,7 +137,7 @@ for i in range(len(jobtime)):
       shrs = "{0:.2f}\n({1:d})".format(hrs, jobs[i][j])
       ax2.text(j, i, shrs, horizontalalignment='center', verticalalignment='center', fontsize=7)
 
-fig.savefig("sched_coeff_heatmap_wait.png")
+fig.savefig("sched_coeff_heatmap_wait.png", bbox_inches='tight')
 
 fig.clf()
 ax3 = plt.subplot(1, 1, 1)
@@ -160,5 +160,5 @@ for i in range(len(jobtime)):
       else:
          ax3.text(j, i, str(jobs[i][j]), horizontalalignment='center', verticalalignment='center', fontsize=7)
 
-fig.savefig("usage_heatmap.png")
+fig.savefig("usage_heatmap.png", bbox_inches='tight')
 
