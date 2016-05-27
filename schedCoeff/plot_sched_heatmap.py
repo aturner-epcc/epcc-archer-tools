@@ -110,6 +110,7 @@ ax1.set_xlabel("Job Size / nodes")
 ax1.set_ylabel("Run Time / h")
 ax1.set_title("Scheduling Coefficient Matrix (numbers are numbers of jobs)")
 cbar1 = plt.colorbar(cax1, orientation='vertical', shrink=0.45, aspect=10)
+cbar1.set_label('Scheduling Coefficient', rotation=270, labelpad=15)
 for i in range(len(jobtime)):
    for j in range(len(size)):
       ax1.text(j, i, str(jobs[i][j]), horizontalalignment='center', verticalalignment='center', fontsize=7)
@@ -130,6 +131,7 @@ ax2.set_xlabel("Job Size / nodes")
 ax2.set_ylabel("Run Time / h")
 ax2.set_title("Scheduling Coefficient Matrix\n(boxes contain mean queue time in hours and number of jobs)")
 cbar2 = plt.colorbar(cax2, orientation='vertical', shrink=0.45, aspect=10)
+cbar2.set_label('Scheduling Coefficient', rotation=270, labelpad=15)
 for i in range(len(jobtime)):
    for j in range(len(size)):
       hms = wait[i][j].split(':')
@@ -153,6 +155,7 @@ ax3.set_xlabel("Job Size / nodes")
 ax3.set_ylabel("Run Time / h")
 ax3.set_title("Usage Matrix\n(Colours indicate kAU usage and boxes contain number of jobs)")
 cbar3 = plt.colorbar(cax3, orientation='vertical', shrink=0.45, aspect=10)
+cbar3.set_label('Usage / kAU', rotation=270, labelpad=15)
 for i in range(len(jobtime)):
    for j in range(len(size)):
       if xusage[i][j]/maxu > 0.9:
