@@ -1,8 +1,10 @@
+#!/usr/bin/env python
 import sys
 import re
 import numpy as np
 
 csvfile = open(sys.argv[1], "r")
+postfix = sys.argv[2].strip()
 
 size = ["1", "2", "3-4", "5-8", "9-16", "17-32", "33-64", "65-128", "129-256", "257-512", "513-1024", "1025-2048", "2049-4096", "4097-8192"]
 jobtime = []
@@ -115,31 +117,7 @@ for i in range(len(jobtime)):
    for j in range(len(size)):
       ax1.text(j, i, str(jobs[i][j]), horizontalalignment='center', verticalalignment='center', fontsize=7)
 
-fig.savefig("sched_coeff_heatmap_jobs.png", bbox_inches='tight')
-
-# fig = plt.figure()
-fig.clf()
-ax2 = plt.subplot(1, 1, 1)
-masked_array = np.ma.masked_where(xeff==-1, xeff)
-cmap = cm.RdYlGn
-cmap.set_bad('w', 1.0)
-cax2 = ax2.imshow(masked_array, interpolation='nearest', cmap=cmap, vmin=0.0, vmax=1.0)
-plt.xticks(np.arange(len(size)), size, rotation='45')
-ax2.set_yticks(np.arange(len(jobtime)))
-ax2.set_yticklabels(jobtime)
-ax2.set_xlabel("Job Size / nodes")
-ax2.set_ylabel("Run Time / h")
-ax2.set_title("Scheduling Coefficient Matrix\n(boxes contain mean queue time in hours and number of jobs)")
-cbar2 = plt.colorbar(cax2, orientation='vertical', shrink=0.45, aspect=10)
-cbar2.set_label('Scheduling Coefficient', rotation=270, labelpad=15)
-for i in range(len(jobtime)):
-   for j in range(len(size)):
-      hms = wait[i][j].split(':')
-      hrs = float(hms[0]) + float(hms[1])/60.0 + float(hms[2])/3600.0
-      shrs = "{0:.2f}\n({1:d})".format(hrs, jobs[i][j])
-      ax2.text(j, i, shrs, horizontalalignment='center', verticalalignment='center', fontsize=7)
-
-fig.savefig("sched_coeff_heatmap_wait.png", bbox_inches='tight')
+fig.savefig("sc_heatmap_" + postfix + ".png", bbox_inches='tight')
 
 fig.clf()
 ax3 = plt.subplot(1, 1, 1)
@@ -163,5 +141,5 @@ for i in range(len(jobtime)):
       else:
          ax3.text(j, i, str(jobs[i][j]), horizontalalignment='center', verticalalignment='center', fontsize=7)
 
-fig.savefig("usage_heatmap.png", bbox_inches='tight')
+fig.savefig("usage_heatmap_" + postfix + ".png", bbox_inches='tight')
 
