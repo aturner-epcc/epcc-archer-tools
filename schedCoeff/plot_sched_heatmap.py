@@ -1,4 +1,8 @@
 #!/usr/bin/env python
+#
+# This script plots heatmaps of scheduling coefficients and usage using matplotlib
+# Input to the sript is from the SAFE Scehduling Coefficient report
+#
 import sys
 import re
 import numpy as np
@@ -6,17 +10,24 @@ import numpy as np
 csvfile = open(sys.argv[1], "r")
 postfix = sys.argv[2].strip()
 
+# Hardcoded job sizes are horrible but we would have to parse the file twice to get them
 size = ["1", "2", "3-4", "5-8", "9-16", "17-32", "33-64", "65-128", "129-256", "257-512", "513-1024", "1025-2048", "2049-4096", "4097-8192"]
 jobtime = []
 eff = []
 wait = []
-jobs = []
+rjobs = []
+sjobs = []
 usage = []
 values = []
-jvalues = []
+rjvalues = []
+sjvalues = []
 uvalues = []
 wvalues = []
+submit = []
 
+########################################################
+# Read the data from CSV file
+########################################################
 intable = False
 for line in csvfile:
 
@@ -29,7 +40,8 @@ for line in csvfile:
       jobtime.append(joblen)
       intable = True
       values = [None] * len(size)
-      jvalues = [0] * len(size)
+      rjvalues = [0] * len(size)
+      sjvalues = [0] * len(size)
       uvalues = [0.0] * len(size)
       wvalues = ["0:0:0"] * len(size)
       continue
@@ -41,7 +53,8 @@ for line in csvfile:
       # Skip the end indicator
       if re.match(",", line):
          eff.append(values)
-         jobs.append(jvalues)
+         rjobs.append(rjvalues)
+         sjobs.append(sjvalues)
          usage.append(uvalues)
          wait.append(wvalues)
          intable = False
@@ -51,10 +64,11 @@ for line in csvfile:
       dataline = line.rstrip()
       tokens = dataline.split(",")
       ind = size.index(tokens[0])
-      jvalues[ind] = int(tokens[1])
-      uvalues[ind] = float(tokens[2])
-      wvalues[ind] = tokens[4]
-      values[ind] = float(tokens[5])
+      sjvalues[ind] = int(tokens[1])
+      rjvalues[ind] = int(tokens[2])
+      uvalues[ind] = float(tokens[3])
+      wvalues[ind] = tokens[5]
+      values[ind] = float(tokens[6])
 
 csvfile.close()
 
@@ -86,7 +100,9 @@ xeff = np.array(eff)
 xusage = np.array(usage)
 
 
-# Plot a heatmap
+########################################################
+# Plot heatmaps
+########################################################
 import matplotlib
 
 # Plot to image file without need for X server
@@ -115,7 +131,7 @@ cbar1 = plt.colorbar(cax1, orientation='vertical', shrink=0.45, aspect=10)
 cbar1.set_label('Scheduling Coefficient', rotation=270, labelpad=15)
 for i in range(len(jobtime)):
    for j in range(len(size)):
-      ax1.text(j, i, str(jobs[i][j]), horizontalalignment='center', verticalalignment='center', fontsize=7)
+      ax1.text(j, i, str(rjobs[i][j]), horizontalalignment='center', verticalalignment='center', fontsize=7)
 
 fig.savefig("sc_heatmap_" + postfix + ".png", bbox_inches='tight')
 
@@ -137,9 +153,9 @@ cbar3.set_label('Usage / kAU', rotation=270, labelpad=15)
 for i in range(len(jobtime)):
    for j in range(len(size)):
       if xusage[i][j]/maxu > 0.9:
-         ax3.text(j, i, str(jobs[i][j]), horizontalalignment='center', verticalalignment='center', fontsize=7, color='white')
+         ax3.text(j, i, str(rjobs[i][j]), horizontalalignment='center', verticalalignment='center', fontsize=7, color='white')
       else:
-         ax3.text(j, i, str(jobs[i][j]), horizontalalignment='center', verticalalignment='center', fontsize=7)
+         ax3.text(j, i, str(rjobs[i][j]), horizontalalignment='center', verticalalignment='center', fontsize=7)
 
 fig.savefig("usage_heatmap_" + postfix + ".png", bbox_inches='tight')
 
