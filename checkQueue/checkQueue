@@ -1,4 +1,4 @@
-#!/bin/bash --login
+#!/bin/bash
 #############################################################
 #
 # Get the Comments field from the qstat queue status
