@@ -1,0 +1,483 @@
+#!/usr/bin/env python
+#
+# This script produces a snapshot of your current Cray module
+# environment and produces a modulerc file describing it and
+# a modulefile so that you can load the environment.
+#
+# The snapshot consists of two parts:
+#
+#   * The description of what are the defaults
+#   * The set of modules loaded in the correct order
+#
+# As part of this, the tool specifically captures which PrgEnv
+# is loaded
+#
+import os
+import sys
+import subprocess
+import getopt
+import datetime
+
+#=======================================================
+# Configuration
+#=======================================================
+
+# List of modules not to track
+doNotTrack = [
+   'configuration',
+   'hosts',
+   'krca',
+   'lbcd',
+   'logcb',
+   'nodehealth',
+   'nodestat',
+   'pdsh',
+   'sdb',
+   'shared-root',
+   'sysutils',
+   'wlm_detect',
+   'wlm_trans',
+   'eswrap',
+   'switch',
+   'udreg',
+   'ugni',
+   'dmapp',
+   'gni-headers',
+   'xpmem',
+   'dvs',
+   'alps',
+   'rca',
+   'PrgEnv-cray',
+   'PrgEnv-intel',
+   'PrgEnv-gnu',
+   'PrgEnv-pgi',
+   'pbs',
+   'craype-ivybridge',
+   'craype-network-aries',
+   'cdt',
+   'packages-archer'
+]
+
+cdtModList = [
+   'acml',
+   'anl-mpich',
+   'atp',
+   'cce',
+   'cray-ccdb',
+   'cray-cti',
+   'cray-ga',
+   'cray-hdf5',
+   'cray-hdf5-parallel',
+   'cray-lgdb',
+   'cray-libsci',
+   'cray-libsci_acc',
+   'cray-mpich',
+   'cray-mpich-abi',
+   'cray-netcdf',
+   'cray-netcdf-hdf5parallel',
+   'cray-parallel-netcdf',
+   'cray-petsc',
+   'cray-petsc-64',
+   'cray-petsc-complex',
+   'cray-petsc-complex-64',
+   'cray-shmem',
+   'cray-snplauncher',
+   'cray-tpsl',
+   'cray-tpsl-64',
+   'cray-trilinos',
+   'craype',
+   'craype-installer',
+   'craypkg-gen',
+   'ddt',
+   'ddt-memdebug',
+   'fftw',
+   'flexnet-publisher',
+   'forge',
+   'gcc',
+   'gcc-cross-aarch64',
+   'iobuf',
+   'java',
+   'modulefiles',
+   'modules',
+   'ntk',
+   'onesided',
+   'papi',
+   'perftools',
+   'perftools-base',
+   'perftools-lite',
+   'pgi',
+   'pmi',
+   'stat',
+   'totalview',
+   'totalview-support',
+]
+
+def main(argv):
+   #=======================================================
+   # Command line options
+   #=======================================================
+   # Read the command-line options
+   try:
+      opts, args = getopt.getopt(argv, "dfhqv", 
+                   ["dryrun", "force", "help", "quiet", "verbose"])
+   except getopt.GetoptError:
+      error.handleError("Could not parse command line options\n")
+
+   forceOverwrite = False
+   verbose = False
+   quiet = False
+   dryrun = False
+   for opt, arg in opts:
+      if opt in ("-f", "--force"):
+         forceOverwrite = True
+      elif opt in ("-h", "--help"):
+         printHelp() 
+         sys.exit(0)
+      elif opt in ("-q", "--quiet"):
+         quiet = True
+      elif opt in ("-v", "--verbose"):
+         verbose = True
+   
+   #=======================================================
+   # Sanity checks
+   #=======================================================
+   # Test if we already have a snapshot loaded
+   if os.environ.get('EPCC_SNAPSHOT') is not None:
+      print "Error: Snapshot already loaded. Cannot create snapshot."
+      print "       Unload snapshot and re-run to capture current environment."
+      sys.exit(1)
+   if verbose:
+      print '\nModules covered by Cray CDT:'
+      for mod in cdtModList:
+         print '   ', mod
+      print '\nModules not tracked by Snapshot tool:'
+      for mod in doNotTrack:
+         print '   ', mod
+   
+   #=======================================================
+   # Read the current environment
+   #=======================================================
+   
+   # Get loaded PrgEnv
+   prgEnv = os.environ['PE_ENV']
+   if verbose:
+      print "\nLoaded PrgEnv:", prgEnv
+   
+   # Get home directory
+   homedir = os.environ['HOME']
+   if verbose:
+      print "\nCurrent HOME:", homedir
+   
+   # Get the list of currently loaded modules
+   modList = os.environ['LOADEDMODULES'].split(':')
+   loadedModDict = {}
+   loadedModList = []
+   for mod in modList:
+      modName = None
+      modVersion = None
+      if '/' in mod:
+         tokens = mod.split('/')
+         modName = tokens[0]
+         modVersion = '/'.join(tokens[1:])
+      else:
+         modName = mod
+         modVersion = ''
+      if modName not in doNotTrack:
+         loadedModDict[modName] = modVersion
+         loadedModList.append(modName)
+      else:
+         if verbose:
+            print "Not tracking: {0}/{1}".format(modName, modVersion)
+   
+   if verbose:
+      print '\nCurrently loaded modules:'
+      for mod in loadedModList:
+         print "   {0}/{1}".format(mod, loadedModDict[mod])
+   
+   # Get the current defaults of all modules
+   moduleloc = os.environ["MODULESHOME"]
+   execfile("{0}/init/python.py".format(moduleloc))
+   p = subprocess.Popen(
+      "{0}/bin/modulecmd python avail -t".format(moduleloc),
+      stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True
+   )
+   stdout,stderr = p.communicate()
+   
+   modList = stderr.splitlines()
+   
+   defModDict = {}
+   defModList = []
+   for mod in modList:
+      if '(default)' in mod:
+         mod = mod.replace('(default)', '')
+         tokens = mod.split('/')
+         if tokens[0] not in doNotTrack:
+            defModDict[tokens[0]] = '/'.join(tokens[1:])
+            defModList.append(tokens[0])
+   
+   if verbose:
+      print '\nCurrent defaults:'
+      for mod in defModList:
+         print "   {0}/{1}".format(mod, defModDict[mod])
+
+   #=======================================================
+   # Build the module lists for the snapshot
+   #=======================================================
+   
+   # Loop over CDT modules, do we use default or custom?
+   inCDTList = []
+   for cdtMod in cdtModList:
+      if cdtMod in loadedModList:
+         # Loaded, replace with loaded version
+         defModDict[cdtMod] = loadedModDict[cdtMod]
+         inCDTList.append(cdtMod)
+   
+   # Capture other loaded modules that we need to track
+   for mod in loadedModList:
+      if mod not in inCDTList and mod not in doNotTrack:
+         if mod in defModList:
+            defModDict[mod] = loadedModDict[mod]
+         else:
+            defModDict[mod] = loadedModDict[mod]
+            defModList.append(mod)
+   
+   # Test if directories exist
+   modfiledir = homedir + '/modulefiles'
+   if not os.path.isdir(modfiledir):
+      if verbose: print "\nCreating directory:", modfiledir
+      os.makedirs(modfiledir)
+   modrcdir = homedir + '/modulercfiles'
+   if not os.path.isdir(modrcdir):
+      if verbose: print "\nCreating directory:", modrcdir
+      os.makedirs(modrcdir)
+
+   # Get current date for naming files
+   now = datetime.datetime.now()
+   nowstr = now.strftime("%Y-%m-%d")
+   
+   # Open the modulefile and write headers
+   modfilename = modfiledir + '/snapshot.' + nowstr 
+   if os.path.isfile(modfilename) and not forceOverwrite:
+      print "Error: file already exists:", modfilename
+      print "       use -f option to overwrite"
+      sys.exit(1)
+   modfile = open(modfilename, 'w')
+   modfile.write("#%Module snapshot\n")
+   modfile.write("setenv MODULERCFILE {0}\n".format(modrcdir + '/snapshot.rc.' + nowstr))
+   
+   # Open the modulercfile and write headers
+   modrcname = modrcdir + '/snapshot.rc.' + nowstr 
+   if os.path.isfile(modrcname) and not forceOverwrite:
+      print "Error: file already exists:", modrcname
+      print "       use -f option to overwrite"
+      sys.exit(1)
+   modrc = open(modrcname, 'w')
+   modrc.write("#%Module snapshot\n")
+   
+   # Print the list of defaul modules to the rc file and the modulefile
+   modfile.write("set defmods {\n")
+   for mod in defModList[:-1]:
+      if defModDict[mod] is '' or defModDict[mod] is None:
+         modfile.write("   {0} \\\n".format(mod))
+      else:
+         modfile.write("   {0}/{1} \\\n".format(mod, defModDict[mod]))
+         modrc.write("module-version {0}/{1} default\n".format(mod, defModDict[mod]))
+   mod = defModList[-1]
+   if defModDict[mod] is '' or defModDict[mod] is None:
+      modfile.write("   {0}\n".format(mod))
+   else:
+      modfile.write("   {0}/{1}\n".format(mod, defModDict[mod]))
+      modrc.write("module-version {0}/{1} default\n".format(mod, defModDict[mod]))
+   modfile.write("}\n")
+   
+   # Close the rc file
+   modrc.close()
+   
+   # Print the list of modules to load if required
+   modfile.write("set loadmods {\n")
+   for mod in loadedModList[:-1]:
+      if loadedModDict[mod] is '' or loadedModDict[mod] is None:
+         modfile.write("   {0} \\\n".format(mod))
+      else:
+         modfile.write("   {0}/{1} \\\n".format(mod, loadedModDict[mod]))
+   mod = loadedModList[-1]
+   if loadedModDict[mod] is '' or loadedModDict[mod] is None:
+      modfile.write("   {0}\n".format(mod))
+   else:
+      modfile.write("   {0}/{1}\n".format(mod, loadedModDict[mod]))
+   modfile.write("}\n")
+   
+   # Write to TCL code to the modulefile to switch to new defaults if
+   # they are already in the environment
+   modfile.write("""\n\n
+   if {[module-info mode load] || [module-info mode switch2] || [module-info mode display] && ! [module-info mode whatis] } {
+   """)
+   
+   modfile.write("""
+     setenv EPCC_SNAPSHOT 1
+     foreach mod $defmods {
+         set found 0
+         set mod_name [lindex [split $mod '/'] 0]
+         if { $mod != "/" } {
+           if {[is-loaded $mod_name]} {
+             foreach path [split $env(MODULEPATH) ":"] {
+               if {[file exists $path/$mod]} {
+                 set found 1
+                 break
+               }
+             }
+             if { ! $found } {
+               puts stderr "\\n\\nError:\\n$mod is not available."
+               puts stderr "You might need to contact your adminstrator to have the package reinstalled.\\n"
+               exit 1
+             }
+           }
+         }
+       }
+       foreach mod $defmods {
+         set mod_name [lindex [split $mod '/'] 0]
+         if { $mod != "/" } {
+           if {[is-loaded $mod_name]} {
+             puts stderr "Switching to $mod."
+             module switch $mod
+           }
+         }
+       }
+   """)
+   
+   # Now we need to potentially switch to the correct PrgEnv
+   prgEnvFinal = None
+   prgEnvStart = []
+   if prgEnv == "CRAY":
+      prgEnvFinal = "PrgEnv-cray"
+      prgEnvStart = ["PrgEnv-intel", "PrgEnv-gnu", "PrgEnv-pgi"]
+   elif prgEnv == "INTEL":
+      prgEnvFinal = "PrgEnv-intel"
+      prgEnvStart = ["PrgEnv-cray", "PrgEnv-gnu", "PrgEnv-pgi"]
+   elif prgEnv == "GNU":
+      prgEnvFinal = "PrgEnv-gnu"
+      prgEnvStart = ["PrgEnv-cray", "PrgEnv-intel", "PrgEnv-pgi"]
+   elif prgEnv == "PGI":
+      prgEnvFinal = "PrgEnv-pgi"
+      prgEnvStart = ["PrgEnv-cray", "PrgEnv-intel", "PrgEnv-gnu"]
+   for pe in prgEnvStart:
+      modfile.write("""
+      if {{[is-loaded {0}]}} {{
+        puts stderr "Switching to {1}."
+        module swap {0} {1}
+      }}
+   """.format(pe, prgEnvFinal))
+   
+   # TCL code to load modules if required
+   modfile.write("""
+     foreach mod $loadmods {
+         set found 0
+         set mod_name [lindex [split $mod '/'] 0]
+         if { $mod != "/" } {
+           if {[is-loaded $mod_name]} {
+             foreach path [split $env(MODULEPATH) ":"] {
+               if {[file exists $path/$mod]} {
+                 set found 1
+                 break
+               }
+             }
+             if { ! $found } {
+               puts stderr "\\n\\nError:\\n$mod is not available."
+               puts stderr "You might need to contact your adminstrator to have the package reinstalled.\\n"
+               exit 1
+             }
+           }
+         }
+       }
+       foreach mod $loadmods {
+         set mod_name [lindex [split $mod '/'] 0]
+         if { $mod != "/" } {
+           if {[is-loaded $mod_name]} {
+             puts stderr "Already loaded $mod."
+           } else {
+             puts stderr "Loading $mod."
+             module load $mod
+           }
+         }
+       }
+   """)
+   
+   # TCL code for unloading
+   modfile.write("""
+   } elseif {[module-info mode remove] && ! [module-info mode switch]} {
+       unsetenv EPCC_SNAPSHOT
+       puts stderr "\\nUnloading a snapshot module is insufficient to restore the system defaults."
+       puts stderr "Please logout and login again to reset your environment.\\n"
+   }
+   """)
+   modfile.close()
+
+   if not quiet:
+      print "\nSnapshot successfully created"
+      print "      modulefile in:", modfilename
+      print "   modulerc file in:", modrcname
+      print
+      print """
+The snapshot captures your current module environment and allows you to
+recreate the current environment by loading the snapshot module that 
+has been created.
+
+Note: for the snapshot to work correctly it also requires the modulerc
+file that has also been created. The location of this is hardwired into
+the created modulefile so if you move the modulerc file (or share this
+with someone else) then you must also update the modulerc location by
+editing the snapshot modulefile.
+
+The snapshot has a couple of known limitations:
+
+* While it may load or switch modules it will never unload modules. This
+  means that if you have additional modules loaded when you load the 
+  snapshot it will not unload them (although it may switch them to 
+  versions that were loaded or were the default when the snapshot 
+  was created.
+
+* If modules in the snapshot no longer exist on the system then there
+  is nothing the snapshot can do to reinstate them. It will issue a 
+  warning if this is the case but will not substitute an alternative.
+  You must resolve this issue yourself by choosing an appropriate 
+  module.
+
+* Unloading the snapshot module does not unload modules or reset your
+  environment in any way. You must log out and log back in again to
+  reset your environemnt. For this reason we strongly recommend that 
+  you do not load snapshots in your .bashrc file.
+"""
+   sys.exit(0)
+
+#=======================================================
+# Function to print help
+#=======================================================
+def printHelp():
+    """Print help for the tool.
+    """
+
+    print """
+Create snapshot of the current module environment.
+
+Produces a modulefile and modulercfile to enable the current environment to be
+replicated by loading a module. By default, the modulefile is called
+"snapshot.YYYY-mm-dd" and placed in $HOME/modulefiles; and the modulercfile
+is called "snapshotrc.YYYY-mm-dd" and placed in $HOME/modulercfiles. If the 
+directories do not already exist, then they are created.
+ 
+USAGE
+make_snapshot  [options]
+
+OPTIONS
+-f,--force      Force overwrite of existing snapshot files, if they exist
+
+-h,--help       Show this help
+
+-q,--quiet      Create snapshot without printing any information to console
+
+-v,--verbose    Print more information about the snapshot creation
+
+"""
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
