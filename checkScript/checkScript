@@ -41,7 +41,7 @@ MAX_CORES_PER_NODE=24                  # Cores per node
 MAX_NODES = 4920                       # Maximum number of nodes for standard queues
 DEFAULT_WALLTIME="0:5:0"               # Default walltime, if none specified
 MIN_WALLTIME="0:1:0"                   # Minimum walltime
-MAX_WALLTIME="1-128:48,129-:24"        # Maximum walltime
+MAX_WALLTIME="1-256:48,257-:24"        # Maximum walltime
 AU_RATE = 0.015*MAX_CORES_PER_NODE     # Current AU rate
 
 BUDGETS = "/usr/local/packages/cse/budgets/budgets"
@@ -186,7 +186,7 @@ if re.search(",", MAX_WALLTIME):
 		mt = items[1]
 		range = r.split("-")
 		# If the upper range is empty use max cores
-		if range[1] == "": range[1] = str(MAX_NODES)
+		if range[1] == "": range[1] = str(1000000) #make the upper limit "lots"
 		# Set the max walltime string if we are in the range
 		if (nnodes >= int(range[0])) and (nnodes <= int(range[1])):
 			maxtime = mt + ":0:0"
@@ -199,6 +199,11 @@ if (timeToSeconds(walltime) > timeToSeconds(maxtime)):
         if (verbose): errorMessage +=  "** ERROR: requested walltime ({0}) is larger than maximum ({1}) **\n".format(walltime, maxtime)
         walltimeErr = "(error)"
         nError += 1
+elif (timeToSeconds(walltime) > timeToSeconds("24:0:0") and (queue != "long")):
+        if (verbose): warnMessage += "++ Warning: requested walltime ({0}) is greater than 24h. ++\n     Please remember to use the long queue (qsub -q long ...)\n".format(walltime)
+        walltimeErr = "(warning)"
+        nWarn +=1
+        
 if (timeToSeconds(walltime) < timeToSeconds(MIN_WALLTIME)):
         if (verbose): errorMessage +=  "** ERROR: requested walltime ({0}) is smaller than minimum ({1}) **\n".format(walltime, MIN_WALLTIME)
         walltimeErr = "(error)"
