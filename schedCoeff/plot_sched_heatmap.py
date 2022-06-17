@@ -3,15 +3,44 @@
 # This script plots heatmaps of scheduling coefficients and usage using matplotlib
 # Input to the sript is from the SAFE Scehduling Coefficient report
 #
+# How to run
+# %Run plot_sched_heatmap-3.py SchedulingCoefficient_Q1_2021.csv Q1_2021
+# 1st arg is filename of csv   2nd arg is output file suffix
+#
+# if csv filename contains "cpu" then assumes Cirrus CPUh and adjusts Size range and lables accordingly
+# if csv filename contains "gpu" then assumes Cirrus GPUhs
+# otherwise, assumes ARCHER2 CUs
+
 import sys
 import re
 import numpy as np
 
-csvfile = open(sys.argv[1], "r")
+if len(sys.argv) < 2:
+    print("must give two args : 1st arg is filename of csv   2nd arg is output file suffix")
+    quit()
+    
+csvfilename=sys.argv[1]
+
+cirrus_cpu = False
+cirrus_gpu = False
+
+
+if csvfilename.find("cpu") >=0:
+    cirrus_cpu = True
+if csvfilename.find("gpu") >=0:
+    cirrus_gpu = True
+    
+csvfile = open(csvfilename, "r")
 postfix = sys.argv[2].strip()
 
 # Hardcoded job sizes are horrible but we would have to parse the file twice to get them
 size = ["1", "2", "3-4", "5-8", "9-16", "17-32", "33-64", "65-128", "129-256", "257-512", "513-1024", "1025-2048", "2049-4096", "4097-8192"]
+
+if cirrus_cpu :
+    size = ["1", "2", "3-4", "5-8", "9-16", "17-32", "33-64", "65-128"]
+if cirrus_gpu :
+   size = ["1", "2", "3-4", "5-8", "9-16", "17-32"]
+
 jobtime = []
 eff = []
 wait = []
@@ -31,7 +60,7 @@ submit = []
 intable = False
 for line in csvfile:
 
-   print line
+   print (line)
 
    if re.match("Runtime:", line):
       sizeline = line.rstrip()
@@ -119,7 +148,7 @@ ax1 = plt.subplot(1, 1, 1)
 masked_array = np.ma.masked_where(xeff==-1, xeff)
 cmap = cm.RdYlGn
 cmap.set_bad('w', 1.0)
-print masked_array
+print (masked_array)
 cax1 = ax1.imshow(masked_array, interpolation='nearest', cmap=cmap, vmin=0.0, vmax=1.0)
 plt.xticks(np.arange(len(size)), size, rotation='45')
 ax1.set_yticks(np.arange(len(jobtime)))
@@ -147,9 +176,17 @@ ax3.set_yticks(np.arange(len(jobtime)))
 ax3.set_yticklabels(jobtime)
 ax3.set_xlabel("Job Size / nodes")
 ax3.set_ylabel("Run Time / h")
-ax3.set_title("Usage Matrix\n(Colours indicate kAU usage and boxes contain number of jobs)")
+ax3.set_title("Usage Matrix\n(Colours indicate CUs usage and boxes contain number of jobs)")
+if cirrus_cpu:
+    ax3.set_title("Usage Matrix\n(Colours indicate CPUh usage and boxes contain number of jobs)")
+if cirrus_gpu:
+    ax3.set_title("Usage Matrix\n(Colours indicate GPUh usage and boxes contain number of jobs)")
 cbar3 = plt.colorbar(cax3, orientation='vertical', shrink=0.45, aspect=10)
-cbar3.set_label('Usage / kAU', rotation=270, labelpad=15)
+cbar3.set_label('Usage / CUs', rotation=270, labelpad=15)
+if cirrus_cpu:
+    cbar3.set_label('Usage / CPUh', rotation=270, labelpad=15)
+if cirrus_gpu:
+    cbar3.set_label('Usage / GPUh', rotation=270, labelpad=15)
 for i in range(len(jobtime)):
    for j in range(len(size)):
       if xusage[i][j]/maxu > 0.9:
