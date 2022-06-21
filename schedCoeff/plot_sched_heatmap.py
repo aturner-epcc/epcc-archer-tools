@@ -146,7 +146,7 @@ from matplotlib import cm
 fig = plt.figure()
 ax1 = plt.subplot(1, 1, 1)
 masked_array = np.ma.masked_where(xeff==-1, xeff)
-cmap = cm.RdYlGn
+cmap = cm.get_cmap("RdYlGn").copy()
 cmap.set_bad('w', 1.0)
 print (masked_array)
 cax1 = ax1.imshow(masked_array, interpolation='nearest', cmap=cmap, vmin=0.0, vmax=1.0)
@@ -168,7 +168,7 @@ fig.clf()
 ax3 = plt.subplot(1, 1, 1)
 masked_array = np.ma.masked_where(xusage==-1.0, xusage)
 maxu = masked_array.max()
-cmap = cm.hot_r
+cmap = cm.get_cmap("hot_r").copy()
 cmap.set_bad('w', 1.0)
 cax3 = ax3.imshow(masked_array, interpolation='nearest', cmap=cmap)
 plt.xticks(np.arange(len(size)), size, rotation='45')
