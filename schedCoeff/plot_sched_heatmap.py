@@ -3,6 +3,8 @@
 # This script plots heatmaps of scheduling coefficients and usage using matplotlib
 # Input to the sript is from the SAFE Scehduling Coefficient report
 #
+# https://safe.epcc.ed.ac.uk/TransitionServlet/ReportTemplate/resource:66/SchedulingCoefficient#form
+#
 # How to run
 # %Run plot_sched_heatmap-3.py SchedulingCoefficient_Q1_2021.csv Q1_2021
 # 1st arg is filename of csv   2nd arg is output file suffix
@@ -24,7 +26,6 @@ csvfilename=sys.argv[1]
 cirrus_cpu = False
 cirrus_gpu = False
 
-
 if csvfilename.find("cpu") >=0:
     cirrus_cpu = True
 if csvfilename.find("gpu") >=0:
@@ -37,7 +38,7 @@ postfix = sys.argv[2].strip()
 size = ["1", "2", "3-4", "5-8", "9-16", "17-32", "33-64", "65-128", "129-256", "257-512", "513-1024", "1025-2048", "2049-4096", "4097-8192"]
 
 if cirrus_cpu :
-    size = ["1", "2", "3-4", "5-8", "9-16", "17-32", "33-64", "65-128"]
+    size = ["1", "2", "3-4", "5-8", "9-16", "17-32", "33-64", "65-128", "129-256"]
 if cirrus_gpu :
    size = ["1", "2", "3-4", "5-8", "9-16", "17-32"]
 
